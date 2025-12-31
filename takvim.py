@@ -22,7 +22,7 @@ CAPACITY = {
     "pilates": 10
 }
 
-# 🔴 RENDER + LOCAL İÇİN ZORUNLU
+# ---------------- DB ----------------
 with app.app_context():
     db.create_all()
 
@@ -41,12 +41,24 @@ def index():
 
 <style>
 body { font-family: Arial; margin: 30px; }
-#calendar { max-width: 1100px; margin: auto; }
+#calendar { max-width: 1300px; margin: auto; }
+
+/* 🔥 Saat kutuları daha büyük */
+.fc-timegrid-slot {
+    min-height: 100px;
+}
+
+/* Event görünümü */
+.fc-event {
+    font-size: 13px;
+    padding: 4px;
+}
 </style>
 </head>
 
 <body>
-<h2>PT & Pilates Rezervasyon</h2>
+
+<h2>PT & Pilates Rezervasyon Takvimi</h2>
 <div id="calendar"></div>
 
 <script>
@@ -55,11 +67,22 @@ document.addEventListener("DOMContentLoaded", function () {
     document.getElementById("calendar"),
     {
       locale: "tr",
-      initialView: "timeGridWeek",
+      initialView: "timeGridDay",
+      expandRows: true,
+      height: "auto",
+
+      headerToolbar: {
+        left: "prev,next today",
+        center: "title",
+        right: "timeGridDay,timeGridWeek"
+      },
+
       slotMinTime: "08:00:00",
       slotMaxTime: "22:00:00",
       slotDuration: "01:00:00",
+      slotLabelInterval: "01:00",
       allDaySlot: false,
+
       selectable: true,
       events: "/reservations",
 
@@ -91,6 +114,7 @@ document.addEventListener("DOMContentLoaded", function () {
   calendar.render();
 });
 </script>
+
 </body>
 </html>
 """
@@ -101,7 +125,7 @@ def reservations():
     res = Reservation.query.all()
     return jsonify([
         {
-            "title": r.section.upper(),
+            "title": f"{r.section.upper()}",
             "start": r.start_time.isoformat(),
             "end": r.end_time.isoformat(),
             "color": "#4A90E2" if r.section == "pt" else "#F48FB1"
@@ -116,6 +140,7 @@ def reserve():
     start = datetime.fromisoformat(data["start"])
     end = start + timedelta(hours=1)
 
+    # 🔥 AYNI SAATE AYNI BÖLÜM SAYISI
     count = Reservation.query.filter(
         Reservation.section == section,
         Reservation.start_time < end,
@@ -123,7 +148,7 @@ def reserve():
     ).count()
 
     if count >= CAPACITY[section]:
-        return jsonify({"error": "Kapasite dolu"}), 400
+        return jsonify({"error": f"{section.upper()} kapasitesi dolu"}), 400
 
     r = Reservation(
         section=section,
@@ -133,9 +158,10 @@ def reserve():
 
     db.session.add(r)
     db.session.commit()
+
     return jsonify({"message": "Rezervasyon alındı"})
 
-# ---------------- LOCAL ÇALIŞTIR ----------------
+# ---------------- LOCAL ----------------
 if __name__ == "__main__":
     app.run(debug=True)
 
