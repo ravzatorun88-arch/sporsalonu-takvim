@@ -43,12 +43,11 @@ def index():
 body { font-family: Arial; margin: 30px; }
 #calendar { max-width: 1300px; margin: auto; }
 
-/* 🔥 Saat kutuları daha büyük */
+/* Saat kutuları büyük */
 .fc-timegrid-slot {
     min-height: 100px;
 }
 
-/* Event görünümü */
 .fc-event {
     font-size: 13px;
     padding: 4px;
@@ -59,6 +58,9 @@ body { font-family: Arial; margin: 30px; }
 <body>
 
 <h2>PT & Pilates Rezervasyon Takvimi</h2>
+<p>Saat seç → bölüm seç → rezervasyon<br>
+Rezervasyona tıkla → iptal et</p>
+
 <div id="calendar"></div>
 
 <script>
@@ -107,6 +109,19 @@ document.addEventListener("DOMContentLoaded", function () {
           alert(data.message || data.error);
           calendar.refetchEvents();
         });
+      },
+
+      eventClick: function(info) {
+        if (confirm("Bu rezervasyonu iptal etmek istiyor musun?")) {
+          fetch("/cancel/" + info.event.id, {
+            method: "DELETE"
+          })
+          .then(res => res.json())
+          .then(data => {
+            alert(data.message);
+            calendar.refetchEvents();
+          });
+        }
       }
     }
   );
@@ -125,7 +140,8 @@ def reservations():
     res = Reservation.query.all()
     return jsonify([
         {
-            "title": f"{r.section.upper()}",
+            "id": r.id,
+            "title": r.section.upper(),
             "start": r.start_time.isoformat(),
             "end": r.end_time.isoformat(),
             "color": "#4A90E2" if r.section == "pt" else "#F48FB1"
@@ -140,7 +156,6 @@ def reserve():
     start = datetime.fromisoformat(data["start"])
     end = start + timedelta(hours=1)
 
-    # 🔥 AYNI SAATE AYNI BÖLÜM SAYISI
     count = Reservation.query.filter(
         Reservation.section == section,
         Reservation.start_time < end,
@@ -160,6 +175,17 @@ def reserve():
     db.session.commit()
 
     return jsonify({"message": "Rezervasyon alındı"})
+
+# ---------------- İPTAL ----------------
+@app.route("/cancel/<int:rid>", methods=["DELETE"])
+def cancel(rid):
+    r = Reservation.query.get(rid)
+    if not r:
+        return jsonify({"error": "Rezervasyon bulunamadı"}), 404
+
+    db.session.delete(r)
+    db.session.commit()
+    return jsonify({"message": "Rezervasyon iptal edildi"})
 
 # ---------------- LOCAL ----------------
 if __name__ == "__main__":
