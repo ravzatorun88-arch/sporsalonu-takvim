@@ -1,9 +1,8 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
-with app.app_context():
-    db.create_all()
 
+# ---------------- APP ----------------
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///database.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -23,6 +22,10 @@ CAPACITY = {
     "pilates": 10
 }
 
+# 🔴 RENDER + LOCAL İÇİN ZORUNLU
+with app.app_context():
+    db.create_all()
+
 # ---------------- ANA SAYFA ----------------
 @app.route("/")
 def index():
@@ -30,23 +33,20 @@ def index():
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="utf-8">
-  <title>Spor Salonu Takvim</title>
+<meta charset="UTF-8">
+<title>Spor Salonu Takvim</title>
 
-  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/locales/tr.global.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
 
-  <style>
-    body { font-family: Arial; margin: 40px; }
-    #calendar { max-width: 1000px; margin: auto; }
-  </style>
+<style>
+body { font-family: Arial; margin: 30px; }
+#calendar { max-width: 1100px; margin: auto; }
+</style>
 </head>
+
 <body>
-
-<h2>PT & Pilates Rezervasyon Takvimi</h2>
-<p>Aynı saat için PT (10) + Pilates (10) ayrı ayrı alınabilir</p>
-
+<h2>PT & Pilates Rezervasyon</h2>
 <div id="calendar"></div>
 
 <script>
@@ -55,45 +55,19 @@ document.addEventListener("DOMContentLoaded", function () {
     document.getElementById("calendar"),
     {
       locale: "tr",
-
-      /* 👇 GÜNLÜK GÖRÜNÜM */
-      initialView: "timeGridDay",
-
-      /* 👇 ÜST BUTONLAR */
-      headerToolbar: {
-        left: "prev,next today",
-        center: "title",
-        right: "timeGridDay,timeGridWeek"
-      },
-
-      selectable: true,
+      initialView: "timeGridWeek",
+      slotMinTime: "08:00:00",
+      slotMaxTime: "22:00:00",
       slotDuration: "01:00:00",
-
-      /* 👇 SAAT KUTULARI DAHA BÜYÜK */
-      slotMinHeight: 90,
-
       allDaySlot: false,
-
-      slotLabelFormat: {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
-      },
-      eventTimeFormat: {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
-      },
-
+      selectable: true,
       events: "/reservations",
 
       select: function (info) {
-        const section = prompt(
-          "Bölüm seç:\\npt = Personal Training\\npilates = Pilates"
-        );
+        const section = prompt("Bölüm seç: pt / pilates");
 
         if (section !== "pt" && section !== "pilates") {
-          alert("Geçersiz seçim");
+          alert("Geçersiz bölüm");
           return;
         }
 
@@ -110,21 +84,6 @@ document.addEventListener("DOMContentLoaded", function () {
           alert(data.message || data.error);
           calendar.refetchEvents();
         });
-      },
-
-      eventClick: function(info) {
-        if (confirm("Rezervasyon iptal edilsin mi?")) {
-          fetch("/cancel", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: info.event.id })
-          })
-          .then(res => res.json())
-          .then(data => {
-            alert(data.message || data.error);
-            info.event.remove();
-          });
-        }
       }
     }
   );
@@ -132,22 +91,20 @@ document.addEventListener("DOMContentLoaded", function () {
   calendar.render();
 });
 </script>
-
 </body>
 </html>
 """
 
-# ---------------- TAKVİM VERİLERİ ----------------
+# ---------------- EVENTLER ----------------
 @app.route("/reservations")
 def reservations():
     res = Reservation.query.all()
     return jsonify([
         {
-            "id": r.id,
             "title": r.section.upper(),
             "start": r.start_time.isoformat(),
             "end": r.end_time.isoformat(),
-            "color": "#2196f3" if r.section == "pt" else "#e91e63"
+            "color": "#4A90E2" if r.section == "pt" else "#F48FB1"
         } for r in res
     ])
 
@@ -166,35 +123,21 @@ def reserve():
     ).count()
 
     if count >= CAPACITY[section]:
-        return jsonify({
-            "error": f"{section.upper()} için bu saat dolu (max {CAPACITY[section]})"
-        }), 400
+        return jsonify({"error": "Kapasite dolu"}), 400
 
-    r = Reservation(section=section, start_time=start, end_time=end)
+    r = Reservation(
+        section=section,
+        start_time=start,
+        end_time=end
+    )
+
     db.session.add(r)
     db.session.commit()
+    return jsonify({"message": "Rezervasyon alındı"})
 
-    return jsonify({"message": f"{section.upper()} rezervasyonu alındı"})
-
-# ---------------- İPTAL ----------------
-@app.route("/cancel", methods=["POST"])
-def cancel():
-    data = request.json
-    r = Reservation.query.get(data["id"])
-
-    if not r:
-        return jsonify({"error": "Rezervasyon bulunamadı"}), 404
-
-    db.session.delete(r)
-    db.session.commit()
-    return jsonify({"message": "Rezervasyon iptal edildi"})
-
-# ---------------- ÇALIŞTIR ----------------
+# ---------------- LOCAL ÇALIŞTIR ----------------
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)
-
 
 
 
